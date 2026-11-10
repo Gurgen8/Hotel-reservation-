@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Моё бронирование — VisaBook</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="nav"><a class="logo" href="/" style="color:#fff;text-decoration:none">Visa<span>Book</span></a></div>
+    <h1>Ваше бронирование</h1>
+    <p>Бронь отеля с бесплатной отменой для визового центра.</p>
+  </header>
+  <main><div class="card"><div class="done" id="out"></div></div></main>
+<div id="bot" class="bot hidden"></div>
+<script src="live.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const q = new URLSearchParams(location.search);
+const dtOpt = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' };
+const id = q.get('id'), t = q.get('t');
+const dt = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', dtOpt) : '—';
+
+async function render() {
+  const res = await fetch(`/api/bookings/${id}?t=${t}`);
+  const b = await res.json();
+  if (!res.ok) return ($('out').innerHTML = `<div class="msg err">${esc(b.error)}</div>`);
+
+  // Hotel is being booked → waiting screen, then re-render.
+  if (b.status === 'searching') {
+    $('out').innerHTML = '<div class="loader" style="justify-content:center">Подбираем отель…</div>';
+    await waitForHotel({ id, t, city: b.country.city });
+    return render();
+  }
+  if (b.status === 'failed') {
+    $('out').innerHTML = `<div class="big">😕</div><h2>Не получилось подобрать отель</h2><div class="msg err">${esc(b.error || 'Попробуйте другие даты')}</div>
+      <div class="actions" style="justify-content:center"><a class="btn" href="/">Попробовать снова</a></div>`;
+    return;
+  }
+
+  const h = b.hotel;
+  const email = esc(b.passengers[0].email);
+  const confirmed = b.status === 'confirmed';
+  const cancelled = b.status === 'cancelled';
+  const expired = b.status === 'awaiting_payment' && new Date(b.payBy) < new Date();
+
+  const head = confirmed
+    ? `<div class="big">✅</div><h2>Бронь подтверждена · ${esc(b.country.flag)} ${esc(b.country.city)}</h2>`
+    : cancelled ? `<div class="big">🚫</div><h2>Бронь отменена</h2>`
+    : `<div class="big">🎉</div><h2>Всё готово! Отель забронирован · ${esc(b.country.flag)} ${esc(b.country.city)}</h2>`;
+
+  const pay = b.status !== 'awaiting_payment' ? '' : expired
+    ? `<div class="msg err">Срок оплаты истёк. Оформите бронирование заново.</div>`
+    : `<div class="pay">
+        <div>Оплатите до</div>
+        <div class="when">${dt(b.payBy)}</div>
+        <div class="meta">После оплаты номер брони и PDF придут на <b>${email}</b></div>
+        <button class="btn" id="payBtn" style="margin-top:14px">Оплатить ${esc(b.price)}</button>
+        <div class="meta" style="margin-top:8px">Тестовая версия: оплата не списывается</div>
+      </div>`;
+
+  $('out').innerHTML = `
+    ${head}
+    <div class="ref">#${esc(b.id)}</div>
+    ${pay}
+    ${confirmed ? `<div class="msg ${b.mail?.sent ? 'ok' : 'warn'}">${b.mail?.sent ? `PDF отправлен на ${email}` : 'Письмо не отправлено (почта не настроена) — скачайте PDF ниже.'}</div>` : ''}
+    ${h ? `<div class="summary"><div class="box ${cancelled ? 'cancelled' : ''}" style="display:grid;grid-template-columns:${h.photo ? '120px ' : ''}1fr;gap:14px">
+        ${h.photo ? `<img src="${esc(h.photo)}" alt="" onerror="this.remove();this.parentElement.style.gridTemplateColumns='1fr'" style="width:120px;height:96px;object-fit:cover;border-radius:10px;background:#eef2ff">` : ''}
+        <div>
+          <b>🏨 ${esc(h.name)}</b>
+          <div class="meta">${esc(h.address)}</div>
+          ${h.room ? `<div class="meta">${esc(h.room)}</div>` : ''}
+          <div class="seg">${esc(h.checkIn)} → ${esc(h.checkOut)} · Гости: ${esc(h.guests.join(', '))}</div>
+          <div class="meta">Номер брони: ${h.reference ? `<span class="ref" style="font-size:16px">${esc(h.reference)}</span>` : '<span class="locked">•••••• (после оплаты)</span>'}</div>
+          <div class="meta">Бесплатная отмена · оплата в отеле${h.total ? ` · ${esc(h.total)}` : ''}</div>
+        </div>
+      </div></div>` : ''}
+    <div class="actions" style="justify-content:center">
+      ${confirmed ? `<a class="btn" href="/api/bookings/${id}/pdf?t=${t}">⬇️ Скачать PDF</a><button class="btn danger" data-cancel="hotel">Отменить бронь</button>` : ''}
+      <a class="btn ghost" href="/">Новое бронирование</a>
+    </div>
+    <p style="color:var(--muted);font-size:13px">Сохраните эту страницу — по ссылке можно вернуться к бронированию.</p>`;
+
+  const payBtn = $('payBtn');
+  if (payBtn) payBtn.onclick = async () => {
+    payBtn.disabled = true; payBtn.textContent = 'Оплата…';
+    const r = await fetch(`/api/bookings/${id}/pay`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t }) });
+    if (!r.ok) { alert((await r.json()).error); payBtn.disabled = false; payBtn.textContent = `Оплатить ${b.price}`; return; }
+    render();
+  };
+}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Заявки — VisaBook</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .hero { padding-bottom: 100px; }
+    .req { border: 1.5px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+    .req.focus { border-color: var(--accent); box-shadow: 0 0 0 4px #e0e7ff; }
+    .req-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .badge-s { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 99px; background: #fffbeb; color: var(--warn); }
+    .badge-s.ok { background: #ecfdf5; color: var(--ok); }
+    .badge-s.err { background: #fef2f2; color: var(--err); }
+    .copy-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin: 14px 0; }
+    .copy { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: #f8fafc; cursor: pointer; font: inherit; text-align: left; }
+    .copy small { display: block; color: var(--muted); font-size: 11px; }
+    .copy b { font-size: 14px; word-break: break-all; }
+    .copy span { font-size: 12px; color: var(--accent); white-space: nowrap; }
+    .copy.copied span { color: var(--ok); }
+    .muted { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="nav"><a class="logo" href="/" style="color:#fff;text-decoration:none">Visa<span>Book</span></a><div class="badge">Оператор</div></div>
+    <h1>Заявки</h1>
+    <p>Trip.com открывается сам. Фильтры: Free cancellation + Pay at Hotel. После брони впишите номер — клиент увидит «оплатите до…».</p>
+  </header>
+  <main><div class="card" id="list"><div class="loader"><div class="spin"></div>Загрузка…</div></div></main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const focusId = new URLSearchParams(location.search).get('id');
+const STATUS = { searching: ['Ждёт брони', ''], awaiting_payment: ['Ждёт оплаты клиента', 'ok'], confirmed: ['Оплачено', 'ok'], cancelled: ['Отменено клиентом', 'err'], failed: ['Отказ', 'err'] };
+const api = async (url, body) => {
+  const r = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Ошибка'); return j;
+};
+const copyBtn = (label, value) => `<button class="copy" data-copy="${esc(value)}"><div><small>${label}</small><b>${esc(value)}</b></div><span>копировать</span></button>`;
+
+function card(b) {
+  const [st, cls] = STATUS[b.status] || [b.status, ''];
+  const p = b.passengers;
+  const open = b.status === 'searching';
+  return `<div class="req ${b.id === focusId ? 'focus' : ''}" id="r-${b.id}">
+    <div class="req-head">
+      <div><b>#${esc(b.id)} · ${esc(b.country.flag)} ${esc(b.country.city)}</b> · ${esc(b.departDate)} → ${esc(b.returnDate)} · ${p.length} гост.</div>
+      <span class="badge-s ${cls}">${st}</span>
+    </div>
+    ${open ? `
+      <div class="copy-grid">
+        ${p.map((g, i) => copyBtn(`Имя ${i + 1}`, g.givenName.toUpperCase()) + copyBtn(`Фамилия ${i + 1}`, g.familyName.toUpperCase())).join('')}
+        ${copyBtn('Email', p[0].email)}
+        ${copyBtn('Телефон (без +374)', p[0].phone.replace(/^\+374/, ''))}
+      </div>
+      <div class="actions" style="margin-top:0"><button class="btn ghost" data-open="${b.id}">↗ Открыть Trip.com снова</button></div>
+      <div class="row" style="margin-top:16px">
+        <div><label>Название отеля *</label><input name="name" placeholder="Hotel de l'Aqueduc"></div>
+        <div><label>Номер брони Trip.com *</label><input name="reference" placeholder="1234567890123"></div>
+        <div><label>Адрес</label><input name="address" placeholder="Улица, город"></div>
+        <div><label>Номер (тип комнаты)</label><input name="room" placeholder="Double Room"></div>
+        <div><label>Цена</label><input name="total" placeholder="€250"></div>
+      </div>
+      <div class="msg-box"></div>
+      <div class="actions"><button class="btn danger" data-fail="${b.id}">Нет подходящих отелей</button><button class="btn" data-done="${b.id}">✓ Готово — забронировано</button></div>`
+    : b.hotel ? `<p class="muted">🏨 ${esc(b.hotel.name)} · № ${esc(b.hotel.reference)}${b.payBy && b.status === 'awaiting_payment' ? ` · клиент платит до ${new Date(b.payBy).toLocaleString('ru-RU')}` : ''}</p>`
+    : b.error ? `<p class="muted">${esc(b.error)}</p>` : ''}
+  </div>`;
+}
+
+let editing = false;
+async function load() {
+  if (editing) return; // don't wipe what the operator is typing
+  const list = await api('/api/operator');
+  $('list').innerHTML = list.length ? list.map(card).join('') : '<p class="muted">Заявок пока нет.</p>';
+  if (focusId) $('r-' + focusId)?.scrollIntoView({ block: 'start' });
+}
+$('list').addEventListener('input', () => (editing = true));
+$('list').onclick = async (e) => {
+  const c = e.target.closest('[data-copy]');
+  if (c) { await navigator.clipboard.writeText(c.dataset.copy); c.classList.add('copied'); c.querySelector('span').textContent = '✓ скопировано'; return; }
+  const t = e.target;
+  if (t.dataset.open) return api(`/api/operator/${t.dataset.open}/open`, {});
+  const box = t.closest('.req');
+  const show = (m) => (box.querySelector('.msg-box').innerHTML = `<div class="msg err">${esc(m)}</div>`);
+  try {
+    if (t.dataset.done) {
+      const v = (n) => box.querySelector(`[name=${n}]`).value.trim();
+      await api(`/api/operator/${t.dataset.done}/done`, { name: v('name'), reference: v('reference'), address: v('address'), room: v('room'), total: v('total') });
+    } else if (t.dataset.fail) {
+      if (!confirm('Сообщить клиенту, что на эти даты нет подходящих отелей?')) return;
+      await api(`/api/operator/${t.dataset.fail}/fail`, {});
+    } else return;
+    editing = false; load();
+  } catch (err) { show(err.message); }
+};
+load().catch((e) => ($('list').innerHTML = `<div class="msg err">${esc(e.message)}</div>`));
+setInterval(() => load().catch(() => {}), 5000);
+</script>
+</body>
+</html>

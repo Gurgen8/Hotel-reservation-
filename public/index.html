@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VisaBook — бронь для визы</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="nav">
+      <div class="logo">Visa<span>Book</span></div>
+      <div class="badge" id="mode">…</div>
+    </div>
+    <h1>Бронь отеля<br>для визового центра</h1>
+    <p>Настоящая бронь отеля с бесплатной отменой и PDF для визового центра.</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="services">
+        <button class="service sel" type="button">🏨 <b>Отель</b><small>Бесплатная отмена</small></button>
+        <button class="service soon" type="button" id="flightSoon">✈️ <b>Авиабилеты</b><small>Скоро</small></button>
+      </div>
+      <div id="soonMsg"></div>
+
+      <h2 style="margin-top:22px">1. Куда вы подаёте на визу?</h2>
+      <div class="grid" id="countries"></div>
+
+      <h2 style="margin-top:28px">2. Даты поездки</h2>
+      <div class="row">
+        <div><label>Дата заезда</label><input type="date" id="departDate"></div>
+        <div><label>Дата выезда</label><input type="date" id="returnDate"></div>
+        <div><label>Путешественников</label><select id="adults"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+      </div>
+
+      <h2 style="margin-top:28px">3. Данные путешественников</h2>
+      <p style="color:var(--muted);margin-top:-8px">Латиницей, как в загранпаспорте.</p>
+      <div id="paxForms"></div>
+      <div class="row">
+        <div><label>Email (сюда придёт PDF)</label><input type="email" id="email" placeholder="you@mail.com"></div>
+        <div><label>Телефон</label><input id="phone" placeholder="+374..."></div>
+      </div>
+
+      <div id="bookMsg"></div>
+      <div class="actions"><span></span><button class="btn" id="book">Забронировать →</button></div>
+      <p style="color:var(--muted);font-size:13px">Бот сам найдёт отель, вы оплатите — и бронь с PDF придёт на почту.</p>
+    </div>
+
+    <div class="features">
+      <div><b>Настоящая бронь</b>Отель подтверждает бронь, визовый центр может её проверить.</div>
+      <div><b>Бесплатная отмена</b>Только тарифы с бесплатной отменой.</div>
+      <div><b>PDF на почту</b>Подтверждение на английском сразу на email.</div>
+    </div>
+  </main>
+  <div id="bot" class="bot hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
